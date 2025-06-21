@@ -16,7 +16,7 @@ import * as Speech from 'expo-speech';
 import Reanimated, { 
   useSharedValue, useAnimatedStyle, withSpring,
   withTiming, interpolate, Extrapolate, SlideInUp, FadeIn,
-  ZoomIn, ZoomOut
+  ZoomIn, ZoomOut, withDelay, runOnJS
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BlurView } from 'expo-blur';
@@ -102,6 +102,219 @@ const CATEGORIES = [
   { id: 'rest', name: 'Rest Areas', icon: Car, color: '#4F46E5' },
   { id: 'coffee', name: 'Coffee', icon: Coffee, color: '#F59E0B' },
 ];
+
+// AnimatedPlaceCard component to replace standard place cards
+const AnimatedPlaceCard = ({ place, onOpen, isFavorite, onToggleFavorite, colors, isDark }) => {
+  const translateX = useSharedValue(0);
+  const itemHeight = useSharedValue(0);
+  const cardOpacity = useSharedValue(1);
+  const cardScale = useSharedValue(1);
+  const actionOpacity = useSharedValue(0);
+  const zoomValue = useSharedValue(1);
+  
+  // Right action (favorite)
+  const panGesture = Gesture.Pan()
+    .onBegin(() => {
+      'worklet';
+      actionOpacity.value = withTiming(1, { duration: 100 });
+    })
+    .onUpdate((event) => {
+      'worklet';
+      translateX.value = Math.max(-100, Math.min(100, event.translationX));
+      zoomValue.value = interpolate(
+        Math.abs(translateX.value),
+        [0, 100],
+        [1, 0.95],
+        Extrapolate.CLAMP
+      );
+    })
+    .onEnd(() => {
+      'worklet';
+      if (translateX.value < -80) {
+        // Swiped left - Navigate action
+        translateX.value = withSpring(-20);
+        zoomValue.value = withSpring(1);
+        translateX.value = withDelay(500, withSpring(0));
+        runOnJS(onOpen)(place);
+      } else if (translateX.value > 80) {
+        // Swiped right - Favorite action
+        translateX.value = withSpring(20);
+        zoomValue.value = withSpring(1);
+        translateX.value = withDelay(500, withSpring(0));
+        runOnJS(onToggleFavorite)(place.id);
+      } else {
+        // Reset position
+        translateX.value = withSpring(0);
+        zoomValue.value = withSpring(1);
+      }
+      actionOpacity.value = withTiming(0, { duration: 200 });
+    });
+
+  const pressGesture = Gesture.Tap()
+    .onBegin(() => {
+      'worklet';
+      cardScale.value = withTiming(0.98, { duration: 100 });
+    })
+    .onFinalize(() => {
+      'worklet';
+      cardScale.value = withTiming(1, { duration: 200 });
+      runOnJS(onOpen)(place);
+    });
+
+  const composedGesture = Gesture.Simultaneous(panGesture, pressGesture);
+
+  const animatedCardStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { translateX: translateX.value },
+        { scale: cardScale.value },
+        { scale: zoomValue.value }
+      ],
+    };
+  });
+  
+  const rightActionStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      translateX.value,
+      [0, 80],
+      [0, 1],
+      Extrapolate.CLAMP
+    );
+    
+    return {
+      opacity: opacity,
+      right: 20,
+    };
+  });
+  
+  const leftActionStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      translateX.value,
+      [0, -80],
+      [0, 1],
+      Extrapolate.CLAMP
+    );
+    
+    return {
+      opacity: opacity,
+      left: 20,
+    };
+  });
+
+  return (
+    <View style={{ marginBottom: 16, paddingHorizontal: 16 }}>
+      {/* Background action indicators */}
+      <Reanimated.View style={[styles.actionIndicator, rightActionStyle, { backgroundColor: `${colors.accent}20` }]}>
+        <Heart size={24} color={colors.accent} fill={colors.accent} strokeWidth={2} />
+        <Text style={{ color: colors.accent, fontFamily: 'Inter-Medium', marginTop: 4 }}>Favorite</Text>
+      </Reanimated.View>
+      
+      <Reanimated.View style={[styles.actionIndicator, leftActionStyle, { backgroundColor: `${colors.primary}20` }]}>
+        <Navigation2 size={24} color={colors.primary} strokeWidth={2} />
+        <Text style={{ color: colors.primary, fontFamily: 'Inter-Medium', marginTop: 4 }}>View</Text>
+      </Reanimated.View>
+      
+      {/* Card */}
+      <GestureDetector gesture={composedGesture}>
+        <Reanimated.View style={[animatedCardStyle]}>
+          <GlassCard style={styles.placeCard}>
+            <View style={styles.placeImageContainer}>
+              <Image source={{ uri: place.image }} style={styles.placeImage} />
+              
+              {/* Special Offer Badge */}
+              {place.specialOffer && (
+                <LinearGradient
+                  colors={['#FF6B6B', '#FF8E8E']}
+                  style={styles.offerBadge}
+                >
+                  <Text style={styles.offerText}>🎉 {place.specialOffer}</Text>
+                </LinearGradient>
+              )}
+              
+              {/* View Details Button */}
+              <TouchableOpacity 
+                style={styles.viewButton}
+                onPress={() => {
+                  onOpen(place);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+              >
+                <Eye size={16} color="#FFFFFF" strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.placeInfo}>
+              <View style={styles.placeHeader}>
+                <Text style={[styles.placeName, { color: colors.text }]}>{place.name}</Text>
+                <TouchableOpacity 
+                  onPress={() => {
+                    onToggleFavorite(place.id);
+                    Haptics.impactAsync(
+                      isFavorite 
+                        ? Haptics.ImpactFeedbackStyle.Light 
+                        : Haptics.ImpactFeedbackStyle.Medium
+                    );
+                  }}
+                  style={styles.favoriteButton}
+                >
+                  <Heart 
+                    size={20} 
+                    color={isFavorite ? "#FF6B6B" : colors.textTertiary} 
+                    fill={isFavorite ? "#FF6B6B" : "transparent"}
+                    strokeWidth={2} 
+                  />
+                </TouchableOpacity>
+              </View>
+              
+              <Text style={[styles.placeDescription, { color: colors.textSecondary }]}>{place.description}</Text>
+              
+              <View style={styles.ratingContainer}>
+                <Star size={16} color="#F59E0B" fill="#F59E0B" strokeWidth={2} />
+                <Text style={[styles.ratingText, { color: colors.text }]}>{place.rating}</Text>
+                <Text style={[styles.reviewCount, { color: colors.textTertiary }]}>({place.reviewCount})</Text>
+                <StatusIndicator 
+                  type={place.isOpen ? "success" : "error"} 
+                  text={place.isOpen ? "Open" : "Closed"} 
+                  size="small" 
+                />
+              </View>
+              
+              <View style={styles.placeDetails}>
+                {getPlaceIcon(place.type)}
+                <Text style={[styles.placeType, { color: colors.textSecondary }]}>{place.type} • {place.category}</Text>
+                <Text style={[styles.placePrice, { color: colors.secondary }]}>{place.price}</Text>
+              </View>
+              
+              {/* Additional Info */}
+              {place.fuelPrice && (
+                <Text style={[styles.fuelPrice, { color: colors.error }]}>⛽ {place.fuelPrice}</Text>
+              )}
+              
+              {place.amenities && (
+                <View style={styles.amenities}>
+                  {place.amenities.map((amenity, index) => (
+                    <View key={index} style={[styles.amenityTag, { backgroundColor: `${colors.accent}20` }]}>
+                      <Text style={[styles.amenityText, { color: colors.accent }]}>{amenity}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              
+              <View style={styles.placeActions}>
+                <View style={styles.placeDistance}>
+                  <MapPin size={14} color={colors.textTertiary} strokeWidth={2} />
+                  <Text style={[styles.distanceText, { color: colors.textTertiary }]}>{place.distance}</Text>
+                  <Clock size={14} color={colors.textTertiary} strokeWidth={2} />
+                  <Text style={[styles.timeText, { color: colors.textTertiary }]}>{place.estimatedTime}</Text>
+                </View>
+              </View>
+            </View>
+          </GlassCard>
+        </Reanimated.View>
+      </GestureDetector>
+    </View>
+  );
+};
 
 const PlaceDetailsModal = ({ isVisible, place, onClose, colors, insets, isDark }) => {
   const translateY = useSharedValue(500);
@@ -302,6 +515,7 @@ const ExploreScreen = () => {
   const [showMap, setShowMap] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [voiceSearchResults, setVoiceSearchResults] = useState('');
+  const [voiceFeedbackEnabled, setVoiceFeedbackEnabled] = useState(true); // Default to enabled
   const mapHeight = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
   const searchBarOpacity = useRef(new Animated.Value(1)).current;
@@ -409,6 +623,15 @@ const ExploreScreen = () => {
     setIsListening(true);
     voiceButtonScale.value = withSpring(1.2);
     
+    // Provide audible feedback that listening has started (if enabled)
+    if (voiceFeedbackEnabled) {
+      Speech.speak("Listening...", {
+        language: 'en',
+        pitch: 1.0,
+        rate: 0.9
+      });
+    }
+    
     setTimeout(() => {
       // We're simulating voice recognition here
       // In a real app, you'd use Speech.recognize() or a similar API
@@ -424,6 +647,15 @@ const ExploreScreen = () => {
       // Give visual feedback of voice results
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
+      // Provide audible feedback about what was recognized (if enabled)
+      if (voiceFeedbackEnabled) {
+        Speech.speak(`Searching for ${randomSearch}`, {
+          language: 'en',
+          pitch: 1.0,
+          rate: 0.9
+        });
+      }
+      
       // Update search query with voice results after a short delay
       setTimeout(() => {
         setSearchQuery(randomSearch);
@@ -438,6 +670,18 @@ const ExploreScreen = () => {
     setIsListening(false);
     voiceButtonScale.value = withSpring(1);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    // Stop any ongoing speech
+    Speech.stop();
+    
+    // Provide audible feedback that listening has stopped (if enabled)
+    if (voiceFeedbackEnabled) {
+      Speech.speak("Voice search canceled", {
+        language: 'en',
+        pitch: 1.0,
+        rate: 0.9
+      });
+    }
   }, []);
 
   const filteredPlaces = NEARBY_PLACES.filter(place => {
@@ -584,14 +828,36 @@ const ExploreScreen = () => {
                     backgroundColor: `${colors.error}30`, 
                     borderColor: colors.error,
                     borderWidth: 1,
+                  },
+                  voiceFeedbackEnabled && {
+                    borderWidth: 1,
+                    borderColor: 'rgba(138, 92, 246, 0.3)'
                   }
                 ]}
                 onPress={isListening ? stopVoiceSearch : startVoiceSearch}
+                onLongPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setVoiceFeedbackEnabled(!voiceFeedbackEnabled);
+                  
+                  // Provide feedback about the setting change
+                  if (!voiceFeedbackEnabled) {
+                    // If we're enabling it, use voice feedback to confirm
+                    Speech.speak("Voice feedback enabled", {
+                      language: 'en',
+                      pitch: 1.0,
+                      rate: 0.9
+                    });
+                  } else {
+                    // If we're disabling it, just show a toast or alert
+                    Alert.alert("Voice Feedback Disabled", "Voice feedback is now off.");
+                  }
+                }}
                 activeOpacity={0.7}
+                delayLongPress={500}
               >
                 <Mic 
                   size={18} 
-                  color={isListening ? colors.error : colors.accent} 
+                  color={isListening ? colors.error : (voiceFeedbackEnabled ? colors.accent : colors.textSecondary)} 
                   strokeWidth={2} 
                 />
                 {isListening && (
@@ -602,6 +868,9 @@ const ExploreScreen = () => {
                       size={36}
                     />
                   </Reanimated.View>
+                )}
+                {voiceFeedbackEnabled && !isListening && (
+                  <View style={styles.voiceFeedbackIndicator} />
                 )}
               </TouchableOpacity>
             </Reanimated.View>
@@ -718,10 +987,24 @@ const ExploreScreen = () => {
           <StatusIndicator type="success" text="Live data" size="small" />
         </View>
         
-        {/* Places List */}
+        {/* Animated Places List with Gestures */}
         {filteredPlaces.map((place, index) => (
-          <InteractiveButton key={place.id} onPress={() => setSelectedPlace(place)}>
-            <GlassCard style={styles.placeCard}>
+          <AnimatedPlaceCard 
+            key={place.id}
+            place={place}
+            onOpen={setSelectedPlace}
+            isFavorite={favorites.includes(place.id)}
+            onToggleFavorite={toggleFavorite}
+            colors={colors}
+            isDark={isDark}
+          />
+        ))}
+        
+        {/* Quick Action Button */}
+        <Reanimated.View 
+          entering={ZoomIn.duration(500).delay(300)}
+          style={[styles.quickActionButton, { backgroundColor: colors.primary }]}
+        >
               <View style={styles.placeImageContainer}>
                 <Image source={{ uri: place.image }} style={styles.placeImage} />
                 
@@ -851,6 +1134,22 @@ const ExploreScreen = () => {
         )}
       </ScrollView>
 
+      {/* Quick Action Button */}
+      <Reanimated.View 
+        entering={ZoomIn.duration(500).delay(300)}
+        style={[styles.quickActionButton, { backgroundColor: colors.primary }]}
+      >
+        <TouchableOpacity 
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            scrollRef.current?.scrollTo({ y: 0, animated: true });
+          }}
+          style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
+        >
+          <Map size={24} color="#FFFFFF" strokeWidth={2} />
+        </TouchableOpacity>
+      </Reanimated.View>
+
       {/* Place Details Modal */}
       <PlaceDetailsModal 
         isVisible={selectedPlace !== null}
@@ -879,6 +1178,8 @@ const ExploreScreen = () => {
     </View>
   );
 }
+
+// Component was fully moved to the top of the file
 
 const createStyles = (colors: any, insets: any, isDark: boolean) => StyleSheet.create({
   container: {
@@ -1007,6 +1308,72 @@ const createStyles = (colors: any, insets: any, isDark: boolean) => StyleSheet.c
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  voiceFeedbackIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#8B5CF6', // Purple dot to indicate voice feedback is on
+  },
+  actionIndicator: {
+    position: 'absolute',
+    top: '40%',
+    width: 70,
+    height: 70,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: -1,
+  },
+  cardPlaceholder: {
+    height: 0,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  quickActionButton: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#2563EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 8,
+    zIndex: 100,
+  },
+  actionsMenu: {
+    position: 'absolute',
+    bottom: 80,
+    right: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
+    overflow: 'hidden',
+  },
+  actionMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+  },
+  actionMenuItemText: {
+    marginLeft: 12,
+    fontFamily: 'Inter-Medium',
+    fontSize: 14,
   },
   searchSuggestionsContainer: {
     backgroundColor: isDark ? 'rgba(37, 42, 58, 0.97)' : 'rgba(255, 255, 255, 0.97)',
