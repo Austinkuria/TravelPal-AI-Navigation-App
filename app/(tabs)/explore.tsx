@@ -112,11 +112,16 @@ const AnimatedPlaceCard = ({ place, onOpen, isFavorite, onToggleFavorite, colors
   const actionOpacity = useSharedValue(0);
   const zoomValue = useSharedValue(1);
   
+<<<<<<< HEAD
   // Enhanced multi-directional gesture support
+=======
+  // Right action (favorite)
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
   const panGesture = Gesture.Pan()
     .onBegin(() => {
       'worklet';
       actionOpacity.value = withTiming(1, { duration: 100 });
+<<<<<<< HEAD
       runOnJS(Haptics.selectionAsync)();
     })
     .onUpdate((event) => {
@@ -179,6 +184,39 @@ const AnimatedPlaceCard = ({ place, onOpen, isFavorite, onToggleFavorite, colors
         cardOpacity.value = withTiming(1);
       }
       actionOpacity.value = withTiming(0, { duration: 300 });
+=======
+    })
+    .onUpdate((event) => {
+      'worklet';
+      translateX.value = Math.max(-100, Math.min(100, event.translationX));
+      zoomValue.value = interpolate(
+        Math.abs(translateX.value),
+        [0, 100],
+        [1, 0.95],
+        Extrapolate.CLAMP
+      );
+    })
+    .onEnd(() => {
+      'worklet';
+      if (translateX.value < -80) {
+        // Swiped left - Navigate action
+        translateX.value = withSpring(-20);
+        zoomValue.value = withSpring(1);
+        translateX.value = withDelay(500, withSpring(0));
+        runOnJS(onOpen)(place);
+      } else if (translateX.value > 80) {
+        // Swiped right - Favorite action
+        translateX.value = withSpring(20);
+        zoomValue.value = withSpring(1);
+        translateX.value = withDelay(500, withSpring(0));
+        runOnJS(onToggleFavorite)(place.id);
+      } else {
+        // Reset position
+        translateX.value = withSpring(0);
+        zoomValue.value = withSpring(1);
+      }
+      actionOpacity.value = withTiming(0, { duration: 200 });
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
     });
 
   const pressGesture = Gesture.Tap()
@@ -201,6 +239,7 @@ const AnimatedPlaceCard = ({ place, onOpen, isFavorite, onToggleFavorite, colors
         { scale: cardScale.value },
         { scale: zoomValue.value }
       ],
+<<<<<<< HEAD
       opacity: cardOpacity.value,
       shadowOpacity: interpolate(
         Math.abs(translateX.value),
@@ -208,6 +247,8 @@ const AnimatedPlaceCard = ({ place, onOpen, isFavorite, onToggleFavorite, colors
         [0.1, 0.3],
         Extrapolate.CLAMP
       ),
+=======
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
     };
   });
   
@@ -241,6 +282,7 @@ const AnimatedPlaceCard = ({ place, onOpen, isFavorite, onToggleFavorite, colors
 
   return (
     <View style={{ marginBottom: 16, paddingHorizontal: 16 }}>
+<<<<<<< HEAD
       {/* Background action indicators with enhanced styling */}
       <Reanimated.View style={[
         styles.actionIndicator, 
@@ -296,6 +338,17 @@ const AnimatedPlaceCard = ({ place, onOpen, isFavorite, onToggleFavorite, colors
         }}>
           View Details
         </Text>
+=======
+      {/* Background action indicators */}
+      <Reanimated.View style={[styles.actionIndicator, rightActionStyle, { backgroundColor: `${colors.accent}20` }]}>
+        <Heart size={24} color={colors.accent} fill={colors.accent} strokeWidth={2} />
+        <Text style={{ color: colors.accent, fontFamily: 'Inter-Medium', marginTop: 4 }}>Favorite</Text>
+      </Reanimated.View>
+      
+      <Reanimated.View style={[styles.actionIndicator, leftActionStyle, { backgroundColor: `${colors.primary}20` }]}>
+        <Navigation2 size={24} color={colors.primary} strokeWidth={2} />
+        <Text style={{ color: colors.primary, fontFamily: 'Inter-Medium', marginTop: 4 }}>View</Text>
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
       </Reanimated.View>
       
       {/* Card */}
@@ -600,9 +653,12 @@ const ExploreScreen = () => {
   const [isListening, setIsListening] = useState(false);
   const [voiceSearchResults, setVoiceSearchResults] = useState('');
   const [voiceFeedbackEnabled, setVoiceFeedbackEnabled] = useState(true); // Default to enabled
+<<<<<<< HEAD
   const [showQuickActions, setShowQuickActions] = useState(false);
   const quickActionsOpacity = useSharedValue(0);
   const quickActionsScale = useSharedValue(0.8);
+=======
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
   const mapHeight = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
   const searchBarOpacity = useRef(new Animated.Value(1)).current;
@@ -710,6 +766,7 @@ const ExploreScreen = () => {
     setIsListening(true);
     voiceButtonScale.value = withSpring(1.2);
     
+<<<<<<< HEAD
     // More natural conversational prompts
     const listeningPrompts = [
       "I'm listening... What are you looking for?",
@@ -723,6 +780,11 @@ const ExploreScreen = () => {
     // Provide audible feedback that listening has started (if enabled)
     if (voiceFeedbackEnabled) {
       Speech.speak(randomPrompt, {
+=======
+    // Provide audible feedback that listening has started (if enabled)
+    if (voiceFeedbackEnabled) {
+      Speech.speak("Listening...", {
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
         language: 'en',
         pitch: 1.0,
         rate: 0.9
@@ -735,6 +797,7 @@ const ExploreScreen = () => {
       setIsListening(false);
       voiceButtonScale.value = withSpring(1);
       
+<<<<<<< HEAD
       // More natural search suggestions with context
       const contextualSearches = [
         { query: 'restaurant', response: "I found some great restaurants nearby!" },
@@ -748,13 +811,26 @@ const ExploreScreen = () => {
       const randomSearch = contextualSearches[Math.floor(Math.random() * contextualSearches.length)];
       
       setVoiceSearchResults(`Searching for ${randomSearch.query}...`);
+=======
+      // Simulate receiving voice results
+      const possibleSearches = ['restaurant', 'gas station', 'coffee', 'rest area'];
+      const randomSearch = possibleSearches[Math.floor(Math.random() * possibleSearches.length)];
+      
+      setVoiceSearchResults(`Searching for ${randomSearch}...`);
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
       
       // Give visual feedback of voice results
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
+<<<<<<< HEAD
       // Provide more conversational feedback about what was recognized (if enabled)
       if (voiceFeedbackEnabled) {
         Speech.speak(randomSearch.response, {
+=======
+      // Provide audible feedback about what was recognized (if enabled)
+      if (voiceFeedbackEnabled) {
+        Speech.speak(`Searching for ${randomSearch}`, {
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
           language: 'en',
           pitch: 1.0,
           rate: 0.9
@@ -763,6 +839,7 @@ const ExploreScreen = () => {
       
       // Update search query with voice results after a short delay
       setTimeout(() => {
+<<<<<<< HEAD
         setSearchQuery(randomSearch.query);
         setVoiceSearchResults('');
         
@@ -785,6 +862,10 @@ const ExploreScreen = () => {
             }
           }, 500);
         }
+=======
+        setSearchQuery(randomSearch);
+        setVoiceSearchResults('');
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
       }, 1500);
     }, 2000); // Simulate 2 seconds of listening
     
@@ -799,6 +880,7 @@ const ExploreScreen = () => {
     // Stop any ongoing speech
     Speech.stop();
     
+<<<<<<< HEAD
     // More conversational cancellation feedback (if enabled)
     const cancelMessages = [
       "No problem, let me know if you need help later",
@@ -810,6 +892,11 @@ const ExploreScreen = () => {
     if (voiceFeedbackEnabled) {
       const randomMessage = cancelMessages[Math.floor(Math.random() * cancelMessages.length)];
       Speech.speak(randomMessage, {
+=======
+    // Provide audible feedback that listening has stopped (if enabled)
+    if (voiceFeedbackEnabled) {
+      Speech.speak("Voice search canceled", {
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
         language: 'en',
         pitch: 1.0,
         rate: 0.9
@@ -817,6 +904,7 @@ const ExploreScreen = () => {
     }
   }, []);
 
+<<<<<<< HEAD
   // Quick actions functionality
   const toggleQuickActions = useCallback(() => {
     setShowQuickActions(!showQuickActions);
@@ -867,6 +955,8 @@ const ExploreScreen = () => {
     }
   ];
 
+=======
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
   const filteredPlaces = NEARBY_PLACES.filter(place => {
     const matchesCategory = selectedCategory === 'all' || 
       (selectedCategory === 'restaurants' && place.type === 'Restaurant') ||
@@ -1197,6 +1287,7 @@ const ExploreScreen = () => {
         )}
       </ScrollView>
 
+<<<<<<< HEAD
       {/* Enhanced Quick Action Button with Menu */}
       {showQuickActions && (
         <Reanimated.View 
@@ -1230,11 +1321,15 @@ const ExploreScreen = () => {
         </Reanimated.View>
       )}
       
+=======
+      {/* Quick Action Button */}
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
       <Reanimated.View 
         entering={ZoomIn.duration(500).delay(300)}
         style={[styles.quickActionButton, { backgroundColor: colors.primary }]}
       >
         <TouchableOpacity 
+<<<<<<< HEAD
           onPress={toggleQuickActions}
           onLongPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -1258,6 +1353,18 @@ const ExploreScreen = () => {
           </Reanimated.View>
         </TouchableOpacity>
       </Reanimated.View>
+=======
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            scrollRef.current?.scrollTo({ y: 0, animated: true });
+          }}
+          style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
+        >
+          <Map size={24} color="#FFFFFF" strokeWidth={2} />
+        </TouchableOpacity>
+      </Reanimated.View>
+
+>>>>>>> b46904478b36520557d1110e569cfdec436471a1
       {/* Place Details Modal */}
       <PlaceDetailsModal 
         isVisible={selectedPlace !== null}
