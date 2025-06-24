@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, TextInput, 
   ScrollView, Image, Dimensions, RefreshControl, Animated, 
-  Alert, Modal, PanResponder, FlatList, Pressable 
+  Alert, Modal, PanResponder, FlatList, Pressable, Platform 
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { 
@@ -13,6 +13,8 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
+import Voice from '@react-native-voice/voice';
+import * as Permissions from 'expo-permissions';
 import Reanimated, { 
   useSharedValue, useAnimatedStyle, withSpring,
   withTiming, interpolate, Extrapolate, SlideInUp, FadeIn,
@@ -650,10 +652,13 @@ const ExploreScreen = () => {
   const [favorites, setFavorites] = useState<number[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [showMap, setShowMap] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [voiceSearchResults, setVoiceSearchResults] = useState('');  const [voiceFeedbackEnabled, setVoiceFeedbackEnabled] = useState(true); // Default to enabled
+  const [showMap, setShowMap] = useState(false);  const [isListening, setIsListening] = useState(false);
+  const [voiceSearchResults, setVoiceSearchResults] = useState('');
+  const [voiceFeedbackEnabled, setVoiceFeedbackEnabled] = useState(true); // Default to enabled
   const [showQuickActions, setShowQuickActions] = useState(false);
+  const [speechResults, setSpeechResults] = useState<string[]>([]);
+  const [speechError, setSpeechError] = useState('');
+  const [noResultsFound, setNoResultsFound] = useState(false);
   const quickActionsOpacity = useSharedValue(0);
   const quickActionsScale = useSharedValue(0.8);
   const mapHeight = useRef(new Animated.Value(0)).current;
@@ -671,6 +676,86 @@ const ExploreScreen = () => {
   useEffect(() => {
     // This ensures the component re-renders properly when theme changes
   }, [isDark]);
+  
+  // Setup voice recognition
+  useEffect(() => {
+    // Initialize voice event handlers
+    Voice.onSpeechStart = () => {
+      console.log('Speech started');
+    };
+    
+    Voice.onSpeechRecognized = () => {
+      console.log('Speech recognized');
+    };
+    
+    Voice.onSpeechEnd = () => {
+      console.log('Speech ended');
+    };
+    
+    Voice.onSpeechError = (err) => {
+      console.log('Speech error:', err);
+      setSpeechError(err.error?.message || 'Error recognizing speech');
+      setIsListening(false);
+    };
+    
+    Voice.onSpeechResults = (event) => {
+      if (event.value && event.value.length > 0) {
+        setSpeechResults(event.value);
+        processVoiceResults(event.value[0]);
+      }
+    };
+    
+    // Cleanup listeners on component unmount
+    return () => {
+      Voice.destroy().then(() => {
+        console.log('Voice instance destroyed');
+      });
+    };
+  }, []);
+  
+  // Process voice recognition results
+  const processVoiceResults = (result: string) => {
+    if (!result) return;
+    
+    const lowerResult = result.toLowerCase();
+    setVoiceSearchResults(`Searching for ${result}...`);
+    
+    // Provide audible feedback based on what was recognized
+    if (voiceFeedbackEnabled) {
+      Speech.speak(`Looking for ${result}`, {
+        language: 'en',
+        pitch: 1.0,
+        rate: 0.9
+      });
+    }
+    
+    // Update search query with voice results after a short delay
+    setTimeout(() => {
+      setSearchQuery(lowerResult);
+      setVoiceSearchResults('');
+      
+      // Check if we'll actually get results
+      const willHaveResults = NEARBY_PLACES.some(place => 
+        place.name.toLowerCase().includes(lowerResult) || 
+        place.category.toLowerCase().includes(lowerResult) ||
+        place.type.toLowerCase().includes(lowerResult)
+      );
+      
+      // Provide feedback if no results will be found
+      if (!willHaveResults) {
+        setNoResultsFound(true);
+        if (voiceFeedbackEnabled) {
+          Speech.speak(`I couldn't find any results for ${result}. Try something else like 'restaurant' or 'gas station'.`, {
+            language: 'en',
+            pitch: 1.0,
+            rate: 0.9
+          });
+        }
+      } else {
+        setNoResultsFound(false);
+      }
+    }, 1500);
+  };
   
   const toggleMapView = () => {
     if (showMap) {
@@ -756,9 +841,12 @@ const ExploreScreen = () => {
         : [...prev, placeId]
     );
   };
-    // Voice search functionality
-  const startVoiceSearch = useCallback(() => {
+    // Voice search functionality  // Start voice recognition
+  const startVoiceSearch = useCallback(async () => {
     setIsListening(true);
+    setNoResultsFound(false);
+    setSpeechError('');
+    setSpeechResults([]);
     voiceButtonScale.value = withSpring(1.2);
     
     // More natural conversational prompts
@@ -779,66 +867,41 @@ const ExploreScreen = () => {
         rate: 0.9
       });
     }
-      setTimeout(() => {
-      // We're simulating voice recognition here
-      // In a real app, you'd use Speech.recognize() or a similar API
-      setIsListening(false);
-      voiceButtonScale.value = withSpring(1);
-      
-      // More natural search suggestions with context
-      const contextualSearches = [
-        { query: 'restaurant', response: "I found some great restaurants nearby!" },
-        { query: 'gas station', response: "There are several gas stations along your route" },
-        { query: 'coffee shop', response: "Perfect! I see some coffee shops you might like" },
-        { query: 'rest area', response: "Here are some rest stops for your journey" },
-        { query: 'fast food', response: "I found quick dining options nearby" },
-        { query: 'hotel', response: "Looking at accommodation options for you" }
-      ];
-      
-      const randomSearch = contextualSearches[Math.floor(Math.random() * contextualSearches.length)];
-      
-      setVoiceSearchResults(`Searching for ${randomSearch.query}...`);
-        // Give visual feedback of voice results
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      // Provide more conversational feedback about what was recognized (if enabled)
-      if (voiceFeedbackEnabled) {
-        Speech.speak(randomSearch.response, {
-          language: 'en',
-          pitch: 1.0,
-          rate: 0.9
-        });
-      }
-        // Update search query with voice results after a short delay
-      setTimeout(() => {
-        setSearchQuery(randomSearch.query);
-        setVoiceSearchResults('');
-        
-        // Additional conversational feedback after search completes
-        if (voiceFeedbackEnabled) {
-          setTimeout(() => {
-            const results = filteredPlaces.length;
-            if (results > 0) {
-              Speech.speak(`I found ${results} ${results === 1 ? 'place' : 'places'} that match your search`, {
-                language: 'en',
-                pitch: 1.0,
-                rate: 0.9
-              });
-            } else {
-              Speech.speak("Sorry, I couldn't find any matches. Try a different search term", {
-                language: 'en',
-                pitch: 1.0,
-                rate: 0.9
-              });
-            }
-          }, 500);
-        }
-      }, 1500);
-    }, 2000); // Simulate 2 seconds of listening
     
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  }, []);
-  const stopVoiceSearch = useCallback(() => {
+    
+    try {
+      console.log('Starting voice recognition...');
+      // Check if Voice module is available
+      if (!Voice.isAvailable) {
+        console.error('Voice recognition is not available on this device');
+        alert('Voice recognition is not available on this device');
+        setIsListening(false);
+        voiceButtonScale.value = withSpring(1);
+        return;
+      }
+      
+      // Request microphone permission
+      const { status } = await Permissions.askAsync(Permissions.AUDIO_RECORDING);
+      if (status !== 'granted') {
+        console.error('Microphone permission not granted');
+        alert('Microphone permission is required for voice search');
+        setIsListening(false);
+        voiceButtonScale.value = withSpring(1);
+        return;
+      }
+      
+      await Voice.start('en-US');
+      console.log('Voice recognition started successfully');
+    } catch (err) {
+      console.error('Voice start error:', err);
+      alert(`Voice recognition error: ${err.message || 'Unknown error'}`);
+      setIsListening(false);
+      setSpeechError('Error starting voice recognition');
+      voiceButtonScale.value = withSpring(1);
+    }
+  }, [voiceFeedbackEnabled]);  // Stop voice recognition
+  const stopVoiceSearch = useCallback(async () => {
     setIsListening(false);
     voiceButtonScale.value = withSpring(1);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -846,22 +909,31 @@ const ExploreScreen = () => {
     // Stop any ongoing speech
     Speech.stop();
     
-    // More conversational cancellation feedback (if enabled)
-    const cancelMessages = [
-      "No problem, let me know if you need help later",
-      "Okay, I'm here when you're ready to search",
-      "Voice search canceled. Feel free to try again anytime",
-      "Got it, I'll wait for your next request"
-    ];
-    
-    if (voiceFeedbackEnabled) {
-      const randomMessage = cancelMessages[Math.floor(Math.random() * cancelMessages.length)];
-      Speech.speak(randomMessage, {        language: 'en',
-        pitch: 1.0,
-        rate: 0.9
-      });
+    try {
+      await Voice.stop();
+    } catch (err) {
+      console.error('Voice stop error:', err);
     }
-  }, []);
+
+    // Only provide cancellation feedback if no results were recognized
+    if (speechResults.length === 0 && !speechError) {
+      // More conversational cancellation feedback (if enabled)
+      const cancelMessages = [
+        "No problem, let me know if you need help later",
+        "Okay, I'm here when you're ready to search",
+        "Voice search canceled. Feel free to try again anytime",
+        "Got it, I'll wait for your next request"
+      ];
+        if (voiceFeedbackEnabled) {
+        const randomMessage = cancelMessages[Math.floor(Math.random() * cancelMessages.length)];
+        Speech.speak(randomMessage, {
+          language: 'en',
+          pitch: 1.0,
+          rate: 0.9
+        });
+      }
+    }
+  }, [voiceFeedbackEnabled, speechResults, speechError]);
 
   // Quick actions functionality
   const toggleQuickActions = useCallback(() => {
@@ -1219,18 +1291,31 @@ const ExploreScreen = () => {
           />
         ))}
         
-        {/* Empty state if no places */}
-        {filteredPlaces.length === 0 && (
+        {/* Empty state if no places */}        {filteredPlaces.length === 0 && (
           <View style={styles.emptyState}>
             <Info size={40} color={colors.textTertiary} strokeWidth={1.5} />
             <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
               No places found
             </Text>
             <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>
-              Try changing your search or filters
+              {noResultsFound 
+                ? "We couldn't find results for your search. Try something like 'restaurant' or 'gas station'."
+                : "Try changing your search or filters"}
             </Text>
+            {noResultsFound && (
+              <TouchableOpacity 
+                style={[styles.clearSearchButton, { backgroundColor: colors.primary }]}
+                onPress={() => {
+                  setSearchQuery('');
+                  setSelectedCategory('all');
+                  setNoResultsFound(false);
+                }}
+              >
+                <Text style={styles.clearSearchButtonText}>Clear Search</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        )}      </ScrollView>
+        )}</ScrollView>
 
       {/* Enhanced Quick Action Button with Menu */}
       {showQuickActions && (
@@ -1784,10 +1869,23 @@ const createStyles = (colors: any, insets: any, isDark: boolean) => StyleSheet.c
     fontSize: 18,
     marginTop: 16,
     marginBottom: 8,
-  },
-  emptyStateText: {
+  },  emptyStateText: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
+    textAlign: 'center',
+    marginHorizontal: 20,
+    marginBottom: 20,
+  },
+  clearSearchButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  clearSearchButtonText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: 'white',
   },
   modalOverlay: {
     flex: 1,
