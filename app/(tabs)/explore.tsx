@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, TextInput, 
   ScrollView, Image, Dimensions, RefreshControl, Animated, 
-  Alert, Modal, PanResponder, FlatList, Pressable, Platform 
+  Alert, Modal, PanResponder, FlatList, Pressable 
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { 
@@ -14,7 +14,6 @@ import {
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
 import Voice from '@react-native-voice/voice';
-import * as Permissions from 'expo-permissions';
 import Reanimated, { 
   useSharedValue, useAnimatedStyle, withSpring,
   withTiming, interpolate, Extrapolate, SlideInUp, FadeIn,
@@ -871,31 +870,9 @@ const ExploreScreen = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
     try {
-      console.log('Starting voice recognition...');
-      // Check if Voice module is available
-      if (!Voice.isAvailable) {
-        console.error('Voice recognition is not available on this device');
-        alert('Voice recognition is not available on this device');
-        setIsListening(false);
-        voiceButtonScale.value = withSpring(1);
-        return;
-      }
-      
-      // Request microphone permission
-      const { status } = await Permissions.askAsync(Permissions.AUDIO_RECORDING);
-      if (status !== 'granted') {
-        console.error('Microphone permission not granted');
-        alert('Microphone permission is required for voice search');
-        setIsListening(false);
-        voiceButtonScale.value = withSpring(1);
-        return;
-      }
-      
       await Voice.start('en-US');
-      console.log('Voice recognition started successfully');
     } catch (err) {
       console.error('Voice start error:', err);
-      alert(`Voice recognition error: ${err.message || 'Unknown error'}`);
       setIsListening(false);
       setSpeechError('Error starting voice recognition');
       voiceButtonScale.value = withSpring(1);
