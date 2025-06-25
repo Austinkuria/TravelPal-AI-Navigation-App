@@ -658,6 +658,7 @@ const ExploreScreen = () => {
   const [speechResults, setSpeechResults] = useState<string[]>([]);
   const [speechError, setSpeechError] = useState('');
   const [noResultsFound, setNoResultsFound] = useState(false);
+  const [voiceTimeout, setVoiceTimeout] = useState<NodeJS.Timeout | null>(null);
   const quickActionsOpacity = useSharedValue(0);
   const quickActionsScale = useSharedValue(0.8);
   const mapHeight = useRef(new Animated.Value(0)).current;
@@ -680,27 +681,46 @@ const ExploreScreen = () => {
   useEffect(() => {
     // Initialize voice event handlers
     Voice.onSpeechStart = () => {
-      console.log('Speech started');
+      console.log('Voice: Speech started');
     };
     
     Voice.onSpeechRecognized = () => {
-      console.log('Speech recognized');
+      console.log('Voice: Speech recognized');
     };
     
     Voice.onSpeechEnd = () => {
-      console.log('Speech ended');
+      console.log('Voice: Speech ended');
+      setIsListening(false);
+      voiceButtonScale.value = withSpring(1);
     };
     
     Voice.onSpeechError = (err) => {
-      console.log('Speech error:', err);
+      console.log('Voice: Speech error:', err);
       setSpeechError(err.error?.message || 'Error recognizing speech');
       setIsListening(false);
+      voiceButtonScale.value = withSpring(1);
+      
+      if (voiceFeedbackEnabled) {
+        Speech.speak("Sorry, I couldn't hear you clearly. Please try again.", {
+          language: 'en',
+          pitch: 1.0,
+          rate: 0.9
+        });
+      }
     };
     
     Voice.onSpeechResults = (event) => {
+      console.log('Voice: Speech results:', event.value);
       if (event.value && event.value.length > 0) {
         setSpeechResults(event.value);
         processVoiceResults(event.value[0]);
+      }
+    };
+    
+    Voice.onSpeechPartialResults = (event) => {
+      console.log('Voice: Partial results:', event.value);
+      if (event.value && event.value.length > 0) {
+        setVoiceSearchResults(`Listening: "${event.value[0]}"`);
       }
     };
     
@@ -708,13 +728,23 @@ const ExploreScreen = () => {
     return () => {
       Voice.destroy().then(() => {
         console.log('Voice instance destroyed');
+      }).catch((err) => {
+        console.error('Error destroying voice instance:', err);
       });
     };
-  }, []);
+  }, [voiceFeedbackEnabled]);
   
   // Process voice recognition results
   const processVoiceResults = (result: string) => {
     if (!result) return;
+    
+    console.log('Processing voice result:', result);
+    
+    // Clear any existing timeout since we got results
+    if (voiceTimeout) {
+      clearTimeout(voiceTimeout);
+      setVoiceTimeout(null);
+    }
     
     const lowerResult = result.toLowerCase();
     setVoiceSearchResults(`Searching for ${result}...`);
@@ -842,40 +872,85 @@ const ExploreScreen = () => {
   };
     // Voice search functionality  // Start voice recognition
   const startVoiceSearch = useCallback(async () => {
-    setIsListening(true);
-    setNoResultsFound(false);
-    setSpeechError('');
-    setSpeechResults([]);
-    voiceButtonScale.value = withSpring(1.2);
-    
-    // More natural conversational prompts
-    const listeningPrompts = [
-      "I'm listening... What are you looking for?",
-      "Go ahead, tell me what you need",
-      "I'm ready to help you find something",
-      "What can I help you discover today?"
-    ];
-    
-    const randomPrompt = listeningPrompts[Math.floor(Math.random() * listeningPrompts.length)];
-    
-    // Provide audible feedback that listening has started (if enabled)
-    if (voiceFeedbackEnabled) {
-      Speech.speak(randomPrompt, {
-        language: 'en',
-        pitch: 1.0,
-        rate: 0.9
-      });
-    }
-    
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
     try {
+      // Check if Voice is available
+      const available = await Voice.isAvailable();
+      console.log('Voice available:', available);
+      
+      if (!available) {
+        setSpeechError('Voice recognition not available on this device');
+        if (voiceFeedbackEnabled) {
+          Speech.speak("Voice recognition is not available on this device", {
+            language: 'en',
+            pitch: 1.0,
+            rate: 0.9
+          });
+        }
+        return;
+      }
+
+      setIsListening(true);
+      setNoResultsFound(false);
+      setSpeechError('');
+      setSpeechResults([]);
+      setVoiceSearchResults('Listening...');
+      voiceButtonScale.value = withSpring(1.2);
+      
+      // More natural conversational prompts
+      const listeningPrompts = [
+        "I'm listening... What are you looking for?",
+        "Go ahead, tell me what you need",
+        "I'm ready to help you find something",
+        "What can I help you discover today?"
+      ];
+      
+      const randomPrompt = listeningPrompts[Math.floor(Math.random() * listeningPrompts.length)];
+      
+      // Provide audible feedback that listening has started (if enabled)
+      if (voiceFeedbackEnabled) {
+        Speech.speak(randomPrompt, {
+          language: 'en',
+          pitch: 1.0,
+          rate: 0.9
+        });
+      }
+      
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      
+      console.log('Starting voice recognition...');
       await Voice.start('en-US');
+      console.log('Voice recognition started successfully');
+      
+      // Set a timeout to stop listening after 10 seconds
+      const timeout = setTimeout(async () => {
+        if (speechResults.length === 0) {
+          console.log('Voice recognition timeout');
+          await stopVoiceSearch();
+          if (voiceFeedbackEnabled) {
+            Speech.speak("I didn't hear anything. Please try again.", {
+              language: 'en',
+              pitch: 1.0,
+              rate: 0.9
+            });
+          }
+        }
+      }, 10000);
+      
+      setVoiceTimeout(timeout);
+      
     } catch (err) {
       console.error('Voice start error:', err);
       setIsListening(false);
-      setSpeechError('Error starting voice recognition');
+      setSpeechError('Error starting voice recognition: ' + (err as Error).message);
       voiceButtonScale.value = withSpring(1);
+      
+      if (voiceFeedbackEnabled) {
+        Speech.speak("Sorry, I'm having trouble starting voice recognition. Please try again.", {
+          language: 'en',
+          pitch: 1.0,
+          rate: 0.9
+        });
+      }
     }
   }, [voiceFeedbackEnabled]);  // Stop voice recognition
   const stopVoiceSearch = useCallback(async () => {
@@ -883,11 +958,18 @@ const ExploreScreen = () => {
     voiceButtonScale.value = withSpring(1);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
+    // Clear any existing timeout
+    if (voiceTimeout) {
+      clearTimeout(voiceTimeout);
+      setVoiceTimeout(null);
+    }
+    
     // Stop any ongoing speech
     Speech.stop();
     
     try {
       await Voice.stop();
+      console.log('Voice recognition stopped');
     } catch (err) {
       console.error('Voice stop error:', err);
     }
@@ -910,7 +992,7 @@ const ExploreScreen = () => {
         });
       }
     }
-  }, [voiceFeedbackEnabled, speechResults, speechError]);
+  }, [voiceFeedbackEnabled, speechResults, speechError, voiceTimeout]);
 
   // Quick actions functionality
   const toggleQuickActions = useCallback(() => {
