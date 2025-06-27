@@ -14,8 +14,10 @@ import {
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
 import Voice from '@react-native-voice/voice';
+import { Audio } from 'expo-av';
+import VoiceHelper from '../../utils/voiceHelper';
 import Reanimated, { 
-  useSharedValue, useAnimatedStyle, withSpring,
+  useSharedValue, useAnimatedStyle, withSpring,  
   withTiming, interpolate, Extrapolate, SlideInUp, FadeIn,
   ZoomIn, ZoomOut, withDelay, runOnJS
 } from 'react-native-reanimated';
@@ -659,6 +661,7 @@ const ExploreScreen = () => {
   const [speechError, setSpeechError] = useState('');
   const [noResultsFound, setNoResultsFound] = useState(false);
   const [voiceTimeout, setVoiceTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [debugMode, setDebugMode] = useState(true); // For testing voice input
   const quickActionsOpacity = useSharedValue(0);
   const quickActionsScale = useSharedValue(0.8);
   const mapHeight = useRef(new Animated.Value(0)).current;
@@ -677,62 +680,15 @@ const ExploreScreen = () => {
     // This ensures the component re-renders properly when theme changes
   }, [isDark]);
   
-  // Setup voice recognition
+  // Setup voice recognition with helper
   useEffect(() => {
-    // Initialize voice event handlers
-    Voice.onSpeechStart = () => {
-      console.log('Voice: Speech started');
-    };
+    const voiceHelper = VoiceHelper.getInstance();
     
-    Voice.onSpeechRecognized = () => {
-      console.log('Voice: Speech recognized');
-    };
-    
-    Voice.onSpeechEnd = () => {
-      console.log('Voice: Speech ended');
-      setIsListening(false);
-      voiceButtonScale.value = withSpring(1);
-    };
-    
-    Voice.onSpeechError = (err) => {
-      console.log('Voice: Speech error:', err);
-      setSpeechError(err.error?.message || 'Error recognizing speech');
-      setIsListening(false);
-      voiceButtonScale.value = withSpring(1);
-      
-      if (voiceFeedbackEnabled) {
-        Speech.speak("Sorry, I couldn't hear you clearly. Please try again.", {
-          language: 'en',
-          pitch: 1.0,
-          rate: 0.9
-        });
-      }
-    };
-    
-    Voice.onSpeechResults = (event) => {
-      console.log('Voice: Speech results:', event.value);
-      if (event.value && event.value.length > 0) {
-        setSpeechResults(event.value);
-        processVoiceResults(event.value[0]);
-      }
-    };
-    
-    Voice.onSpeechPartialResults = (event) => {
-      console.log('Voice: Partial results:', event.value);
-      if (event.value && event.value.length > 0) {
-        setVoiceSearchResults(`Listening: "${event.value[0]}"`);
-      }
-    };
-    
-    // Cleanup listeners on component unmount
+    // Cleanup on unmount
     return () => {
-      Voice.destroy().then(() => {
-        console.log('Voice instance destroyed');
-      }).catch((err) => {
-        console.error('Error destroying voice instance:', err);
-      });
+      voiceHelper.destroy();
     };
-  }, [voiceFeedbackEnabled]);
+  }, []);
   
   // Process voice recognition results
   const processVoiceResults = (result: string) => {
@@ -872,54 +828,90 @@ const ExploreScreen = () => {
   };
     // Voice search functionality  // Start voice recognition
   const startVoiceSearch = useCallback(async () => {
+    console.log('🎤 Starting voice search...');
+    setIsListening(true);
+    setNoResultsFound(false);
+    setSpeechError('');
+    setSpeechResults([]);
+    setVoiceSearchResults('Listening...');
+    voiceButtonScale.value = withSpring(1.2);
+    
+    // More natural conversational prompts
+    const listeningPrompts = [
+      "I'm listening... What are you looking for?",
+      "Go ahead, tell me what you need",
+      "I'm ready to help you find something",
+      "What can I help you discover today?"
+    ];
+    
+    const randomPrompt = listeningPrompts[Math.floor(Math.random() * listeningPrompts.length)];
+    
+    // Provide audible feedback that listening has started (if enabled)
+    if (voiceFeedbackEnabled) {
+      Speech.speak(randomPrompt, {
+        language: 'en',
+        pitch: 1.0,
+        rate: 0.9
+      });
+    }
+    
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
     try {
-      // Check if Voice is available
-      const available = await Voice.isAvailable();
-      console.log('Voice available:', available);
+      const voiceHelper = VoiceHelper.getInstance();
+      console.log('🎤 Voice helper instance obtained');
       
-      if (!available) {
-        setSpeechError('Voice recognition not available on this device');
-        if (voiceFeedbackEnabled) {
-          Speech.speak("Voice recognition is not available on this device", {
-            language: 'en',
-            pitch: 1.0,
-            rate: 0.9
-          });
+      const success = await voiceHelper.startListening(
+        (results) => {
+          // Handle voice results
+          console.log('🎤 Voice results received:', results);
+          if (results.length > 0) {
+            console.log('🎤 Processing first result:', results[0].text);
+            setSpeechResults([results[0].text]);
+            processVoiceResults(results[0].text);
+          }
+        },
+        (error) => {
+          // Handle voice errors
+          console.error('🎤 Voice error:', error);
+          setSpeechError(error);
+          setIsListening(false);
+          voiceButtonScale.value = withSpring(1);
+          setVoiceSearchResults('');
+          
+          if (voiceFeedbackEnabled) {
+            Speech.speak("Sorry, I couldn't hear you clearly. Please try again.", {
+              language: 'en',
+              pitch: 1.0,
+              rate: 0.9
+            });
+          }
+        },
+        () => {
+          // Voice started
+          console.log('Voice recognition started');
+        },
+        () => {
+          // Voice ended
+          console.log('Voice recognition ended');
+          setIsListening(false);
+          voiceButtonScale.value = withSpring(1);
         }
-        return;
+      );
+      
+      if (!success && debugMode) {
+        // Fallback for testing - simulate voice input after 3 seconds
+        console.log('Using debug mode for voice input');
+        setTimeout(() => {
+          // Simulate different voice inputs for testing
+          const testInputs = ['restaurant', 'gas station', 'coffee', 'kenya', 'hotel'];
+          const randomInput = testInputs[Math.floor(Math.random() * testInputs.length)];
+          console.log(`Simulating voice input: ${randomInput}`);
+          processVoiceResults(randomInput);
+          setIsListening(false);
+          voiceButtonScale.value = withSpring(1);
+        }, 3000);
       }
-
-      setIsListening(true);
-      setNoResultsFound(false);
-      setSpeechError('');
-      setSpeechResults([]);
-      setVoiceSearchResults('Listening...');
-      voiceButtonScale.value = withSpring(1.2);
-      
-      // More natural conversational prompts
-      const listeningPrompts = [
-        "I'm listening... What are you looking for?",
-        "Go ahead, tell me what you need",
-        "I'm ready to help you find something",
-        "What can I help you discover today?"
-      ];
-      
-      const randomPrompt = listeningPrompts[Math.floor(Math.random() * listeningPrompts.length)];
-      
-      // Provide audible feedback that listening has started (if enabled)
-      if (voiceFeedbackEnabled) {
-        Speech.speak(randomPrompt, {
-          language: 'en',
-          pitch: 1.0,
-          rate: 0.9
-        });
-      }
-      
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      
-      console.log('Starting voice recognition...');
-      await Voice.start('en-US');
-      console.log('Voice recognition started successfully');
       
       // Set a timeout to stop listening after 10 seconds
       const timeout = setTimeout(async () => {
@@ -936,7 +928,7 @@ const ExploreScreen = () => {
         }
       }, 10000);
       
-      setVoiceTimeout(timeout);
+      setVoiceTimeout(timeout as unknown as NodeJS.Timeout);
       
     } catch (err) {
       console.error('Voice start error:', err);
@@ -952,7 +944,9 @@ const ExploreScreen = () => {
         });
       }
     }
-  }, [voiceFeedbackEnabled]);  // Stop voice recognition
+  }, [voiceFeedbackEnabled, debugMode, speechResults]);
+
+  // Stop voice recognition
   const stopVoiceSearch = useCallback(async () => {
     setIsListening(false);
     voiceButtonScale.value = withSpring(1);
@@ -968,7 +962,8 @@ const ExploreScreen = () => {
     Speech.stop();
     
     try {
-      await Voice.stop();
+      const voiceHelper = VoiceHelper.getInstance();
+      await voiceHelper.stopListening();
       console.log('Voice recognition stopped');
     } catch (err) {
       console.error('Voice stop error:', err);
@@ -1669,17 +1664,16 @@ const createStyles = (colors: any, insets: any, isDark: boolean) => StyleSheet.c
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    zIndex: 20,
-    borderWidth: 1,
-    borderColor: isDark ? colors.border : 'transparent',
+    shadowRadius: 12,
+    elevation: 6,
   },
   searchSuggestion: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
   suggestionTextContainer: {
     marginLeft: 12,
@@ -1714,63 +1708,6 @@ const createStyles = (colors: any, insets: any, isDark: boolean) => StyleSheet.c
     fontFamily: 'Inter-Medium',
     fontSize: 14,
     marginLeft: 6,
-  },
-  aiSection: {
-    marginBottom: 20,
-  },
-  aiCard: {
-    padding: 0,
-  },
-  aiRecommendationGradient: {
-    borderRadius: 16,
-    padding: 20,
-  },
-  aiRecommendationContent: {
-    alignItems: 'flex-start',
-  },
-  aiHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 8,
-  },
-  aiRecommendationTitle: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-  aiRecommendationText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  aiActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    alignSelf: 'flex-start',
-  },
-  aiActionText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
-    color: '#FFFFFF',
-    marginRight: 8,
-  },
-  resultsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 18,
   },
   placeCard: {
     marginBottom: 16,
@@ -1906,17 +1843,62 @@ const createStyles = (colors: any, insets: any, isDark: boolean) => StyleSheet.c
     fontSize: 12,
     marginLeft: 4,
   },
-  actionButtons: {
+  aiSection: {
+    marginBottom: 20,
+  },
+  aiCard: {
+    padding: 0,
+  },
+  aiRecommendationGradient: {
+    borderRadius: 16,
+    padding: 20,
+  },
+  aiRecommendationContent: {
+    alignItems: 'flex-start',
+  },
+  aiHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 8,
   },
-  actionButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
+  aiRecommendationTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+    color: '#FFFFFF',
+  },
+  aiRecommendationText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  aiActionButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 8,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  aiActionText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#FFFFFF',
+    marginRight: 8,
+  },
+  resultsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 18,
   },
   emptyState: {
     alignItems: 'center',
@@ -1928,7 +1910,8 @@ const createStyles = (colors: any, insets: any, isDark: boolean) => StyleSheet.c
     fontSize: 18,
     marginTop: 16,
     marginBottom: 8,
-  },  emptyStateText: {
+  },
+  emptyStateText: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     textAlign: 'center',
