@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Animated, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Animated, Dimensions, Platform, Share, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Navigation, MapPin, Clock, Zap, Mic, MicOff, Route, TriangleAlert as AlertTriangle, Car, Fuel, Coffee, Star, ArrowRight, Target, Chrome as Home, Briefcase, UtensilsCrossed, Map } from 'lucide-react-native';
+import { Navigation, MapPin, Clock, Zap, Mic, MicOff, Route, TriangleAlert as AlertTriangle, Car, Fuel, Coffee, Star, ArrowRight, Target, Chrome as Home, Briefcase, UtensilsCrossed, Map, Info, Leaf, Award, Trophy } from 'lucide-react-native';
 import GlassCard from '@/components/GlassCard';
 import InteractiveButton from '@/components/InteractiveButton';
 import PulseAnimation from '@/components/PulseAnimation';
 import StatusIndicator from '@/components/StatusIndicator';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ThemeToggle from '@/components/ThemeToggle';
-import MapViewComponent from '@/components/MapView';
+import MapViewComponent from '@/components/MapView.web';
+import VoiceHelper from '@/utils/voiceHelper';
+import GradientCard from '@/components/GradientCard';
+import AnimatedButton from '@/components/AnimatedButton';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 
 const { width } = Dimensions.get('window');
 
@@ -74,30 +78,143 @@ export default function NavigateScreen() {
   const [selectedQuickAction, setSelectedQuickAction] = useState<string | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [userLocation, setUserLocation] = useState<any>(null);
+  const [currentMood, setCurrentMood] = useState<string | null>(null);
+  const [showMoodSelector, setShowMoodSelector] = useState(false);
+  const [environmentalStats, setEnvironmentalStats] = useState({
+    co2Saved: '0.0 kg',
+    moneySaved: '$0',
+    timeOptimized: '0 min',
+    efficiencyScore: '0%'
+  });
+  const [showEnhancedAssistant, setShowEnhancedAssistant] = useState(false);
+  const [aiInsights, setAiInsights] = useState([
+    { type: 'warning', message: 'Traffic congestion ahead on I-95. Consider alternate route to save 10 minutes.', icon: '⚠️', color: '#F59E0B' },
+    { type: 'tip', message: 'Taking the Scenic Route would be perfect for your relaxed mood today.', icon: '💡', color: '#059669' },
+    { type: 'alert', message: 'Weather alert: Light rain starting in 15 minutes on your route.', icon: '🌧️', color: '#3B82F6' }
+  ]);
 
   // Reset animations when theme changes
   useEffect(() => {
     // This ensures the component re-renders properly when theme changes
   }, [isDark]);
 
+  // Enhanced AI assistant with advanced voice commands
   const toggleVoiceAssistant = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsListening(!isListening);
     if (!isListening) {
+      setShowEnhancedAssistant(true);
       setAiSuggestion('🎯 I found 3 optimal routes to your destination. The fastest route saves 12 minutes!');
-      setRouteOptions([
-        { name: 'Fastest Route', time: '23 min', distance: '15.2 km', traffic: 'light', savings: '12 min faster' },
-        { name: 'Scenic Route', time: '28 min', distance: '18.7 km', traffic: 'moderate', savings: 'Most beautiful' },
-        { name: 'Eco Route', time: '26 min', distance: '16.1 km', traffic: 'light', savings: '15% less fuel' },
-      ]);
+      
+      // Generate route options based on current mood if selected
+      if (currentMood) {
+        let moodRoutes = [];
+        switch(currentMood) {
+          case 'relaxed':
+            moodRoutes = [
+              { name: 'Scenic Route', time: '28 min', distance: '18.7 km', traffic: 'light', savings: 'Perfect for relaxed mood' },
+              { name: 'Eco Route', time: '26 min', distance: '16.1 km', traffic: 'light', savings: '15% less fuel' },
+              { name: 'Fastest Route', time: '23 min', distance: '15.2 km', traffic: 'moderate', savings: '12 min faster' },
+            ];
+            break;
+          case 'energetic':
+            moodRoutes = [
+              { name: 'Adventure Route', time: '32 min', distance: '19.2 km', traffic: 'moderate', savings: 'Exciting landmarks' },
+              { name: 'Fastest Route', time: '23 min', distance: '15.2 km', traffic: 'light', savings: '12 min faster' },
+              { name: 'Eco Route', time: '26 min', distance: '16.1 km', traffic: 'light', savings: '15% less fuel' },
+            ];
+            break;
+          case 'focused':
+            moodRoutes = [
+              { name: 'Fastest Route', time: '23 min', distance: '15.2 km', traffic: 'light', savings: '12 min faster' },
+              { name: 'Low Distraction Route', time: '25 min', distance: '16.7 km', traffic: 'light', savings: 'Fewer intersections' },
+              { name: 'Eco Route', time: '26 min', distance: '16.1 km', traffic: 'light', savings: '15% less fuel' },
+            ];
+            break;
+          default:
+            moodRoutes = [
+              { name: 'Fastest Route', time: '23 min', distance: '15.2 km', traffic: 'light', savings: '12 min faster' },
+              { name: 'Scenic Route', time: '28 min', distance: '18.7 km', traffic: 'moderate', savings: 'Most beautiful' },
+              { name: 'Eco Route', time: '26 min', distance: '16.1 km', traffic: 'light', savings: '15% less fuel' },
+            ];
+        }
+        setRouteOptions(moodRoutes);
+      } else {
+        setRouteOptions([
+          { name: 'Fastest Route', time: '23 min', distance: '15.2 km', traffic: 'light', savings: '12 min faster' },
+          { name: 'Scenic Route', time: '28 min', distance: '18.7 km', traffic: 'moderate', savings: 'Most beautiful' },
+          { name: 'Eco Route', time: '26 min', distance: '16.1 km', traffic: 'light', savings: '15% less fuel' },
+        ]);
+      }
     } else {
+      setShowEnhancedAssistant(false);
       setAiSuggestion('');
       setRouteOptions([]);
     }
   };
 
+  // Open mood selector modal
+  const openMoodSelector = () => {
+    setShowMoodSelector(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  // Set the user's current mood and update route recommendations
+  const selectMood = (mood: string) => {
+    setCurrentMood(mood);
+    setShowMoodSelector(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // Update AI insights based on mood
+    let newInsights = [...aiInsights];
+    
+    switch(mood) {
+      case 'relaxed':
+        newInsights[1] = { type: 'tip', message: 'Taking the Scenic Route would be perfect for your relaxed mood today.', icon: '💡', color: '#059669' };
+        break;
+      case 'energetic':
+        newInsights[1] = { type: 'tip', message: 'The Adventure Route has some exciting landmarks for your energetic mood!', icon: '💡', color: '#059669' };
+        break;
+      case 'focused':
+        newInsights[1] = { type: 'tip', message: 'Low Distraction Route recommended for your focused mood.', icon: '💡', color: '#059669' };
+        break;
+      case 'tired':
+        newInsights[1] = { type: 'tip', message: 'Consider shorter routes or a rest stop for your tired mood.', icon: '💡', color: '#059669' };
+        break;
+    }
+    
+    setAiInsights(newInsights);
+  };
+
+  // Update environmental impact stats during navigation
+  const updateEnvironmentalStats = () => {
+    if (isNavigating) {
+      setEnvironmentalStats(prev => ({
+        co2Saved: `${(parseFloat(prev.co2Saved) + 0.2).toFixed(1)} kg`,
+        moneySaved: `$${(parseInt(prev.moneySaved.slice(1)) + 1)}`,
+        timeOptimized: `${(parseInt(prev.timeOptimized) + 1)} min`,
+        efficiencyScore: `${Math.min(100, parseInt(prev.efficiencyScore) + 1)}%`
+      }));
+    }
+  };
+
+  // Update stats every minute during navigation
+  useEffect(() => {
+    let interval: number | null = null;
+    
+    if (isNavigating) {
+      interval = setInterval(updateEnvironmentalStats, 60000) as unknown as number; // Update every minute
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isNavigating]);
+
   const startNavigation = () => {
     if (destination.trim()) {
       setIsLoading(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setTimeout(() => {
         setIsLoading(false);
         setIsNavigating(true);
@@ -167,9 +284,83 @@ export default function NavigateScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Mood Selector Modal */}
+      <Modal
+        visible={showMoodSelector}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowMoodSelector(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.moodModal, { backgroundColor: colors.card }]}>
+            <Text style={[styles.moodTitle, { color: colors.text }]}>How are you feeling today?</Text>
+            <Text style={[styles.moodSubtitle, { color: colors.textSecondary }]}>
+              I'll personalize your navigation experience based on your mood
+            </Text>
+            
+            <View style={styles.moodGrid}>
+              <TouchableOpacity
+                style={[
+                  styles.moodOption,
+                  currentMood === 'relaxed' && styles.selectedMood,
+                  { backgroundColor: currentMood === 'relaxed' ? `${colors.secondary}30` : `${colors.border}30` }
+                ]}
+                onPress={() => selectMood('relaxed')}
+              >
+                <Text style={styles.moodEmoji}>😌</Text>
+                <Text style={[styles.moodText, { color: colors.text }]}>Relaxed</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.moodOption,
+                  currentMood === 'energetic' && styles.selectedMood,
+                  { backgroundColor: currentMood === 'energetic' ? `${colors.warning}30` : `${colors.border}30` }
+                ]}
+                onPress={() => selectMood('energetic')}
+              >
+                <Text style={styles.moodEmoji}>⚡</Text>
+                <Text style={[styles.moodText, { color: colors.text }]}>Energetic</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.moodOption,
+                  currentMood === 'focused' && styles.selectedMood,
+                  { backgroundColor: currentMood === 'focused' ? `${colors.primary}30` : `${colors.border}30` }
+                ]}
+                onPress={() => selectMood('focused')}
+              >
+                <Text style={styles.moodEmoji}>🎯</Text>
+                <Text style={[styles.moodText, { color: colors.text }]}>Focused</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.moodOption,
+                  currentMood === 'tired' && styles.selectedMood,
+                  { backgroundColor: currentMood === 'tired' ? `${colors.error}30` : `${colors.border}30` }
+                ]}
+                onPress={() => selectMood('tired')}
+              >
+                <Text style={styles.moodEmoji}>😴</Text>
+                <Text style={[styles.moodText, { color: colors.text }]}>Tired</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <TouchableOpacity
+              style={[styles.closeMoodButton, { backgroundColor: colors.primary }]}
+              onPress={() => setShowMoodSelector(false)}
+            >
+              <Text style={styles.closeMoodButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      
       {/* Header */}
       <LinearGradient
-        colors={colors.headerGradient}
+        colors={['#4c669f', '#3b5998', '#192f6a']}
         style={styles.header}
       >
         <View style={styles.headerContent}>
@@ -180,6 +371,25 @@ export default function NavigateScreen() {
             </View>
             <ThemeToggle />
           </View>
+          
+          {/* Mood Button */}
+          <TouchableOpacity 
+            style={[styles.moodButton, { 
+              backgroundColor: currentMood ? `${colors.secondary}15` : `${colors.border}15` 
+            }]}
+            onPress={openMoodSelector}
+          >
+            <Text style={styles.moodEmoji}>
+              {currentMood === 'relaxed' ? '😌' :
+               currentMood === 'energetic' ? '⚡' :
+               currentMood === 'focused' ? '🎯' :
+               currentMood === 'tired' ? '😴' : '😀'}
+            </Text>
+            <Text style={[styles.moodButtonText, { color: colors.text }]}>
+              {currentMood ? `${currentMood.charAt(0).toUpperCase() + currentMood.slice(1)} Route` : 'Set your mood for personalized routes'}
+            </Text>
+          </TouchableOpacity>
+          
           <View style={styles.statusContainer}>
             <StatusIndicator 
               type="active" 
@@ -279,7 +489,7 @@ export default function NavigateScreen() {
                   selectedQuickAction === action.id && styles.quickActionCardSelected
                 ]}>
                   <LinearGradient
-                    colors={action.colors}
+                    colors={action.colors as any}
                     style={styles.quickActionGradient}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
@@ -332,6 +542,70 @@ export default function NavigateScreen() {
         </View>
 
         {/* AI Voice Assistant */}
+        {/* Environmental Impact Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>🌱 Environmental Impact</Text>
+          <View style={[styles.environmentalCard, { backgroundColor: colors.card }]}>
+            <View style={styles.environmentalHeader}>
+              <Text style={[styles.environmentalTitle, { color: colors.text }]}>
+                <Leaf size={16} color={colors.success} /> Your Impact
+              </Text>
+              {isNavigating && (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={{ width: 8, height: 8, backgroundColor: colors.success, borderRadius: 4, marginRight: 4 }} />
+                  <Text style={{ color: colors.success, fontSize: 12 }}>Live tracking</Text>
+                </View>
+              )}
+            </View>
+            
+            <View style={styles.impactGrid}>
+              <View style={[styles.impactItem, { backgroundColor: `${colors.success}15` }]}>
+                <Text style={styles.impactIcon}>🌱</Text>
+                <Text style={[styles.impactValue, { color: colors.success }]}>{environmentalStats.co2Saved}</Text>
+                <Text style={[styles.impactLabel, { color: colors.textSecondary }]}>CO2 Saved</Text>
+              </View>
+              
+              <View style={[styles.impactItem, { backgroundColor: `${colors.warning}15` }]}>
+                <Text style={styles.impactIcon}>💰</Text>
+                <Text style={[styles.impactValue, { color: colors.warning }]}>{environmentalStats.moneySaved}</Text>
+                <Text style={[styles.impactLabel, { color: colors.textSecondary }]}>Money Saved</Text>
+              </View>
+              
+              <View style={[styles.impactItem, { backgroundColor: `${colors.primary}15` }]}>
+                <Text style={styles.impactIcon}>⏱️</Text>
+                <Text style={[styles.impactValue, { color: colors.primary }]}>{environmentalStats.timeOptimized}</Text>
+                <Text style={[styles.impactLabel, { color: colors.textSecondary }]}>Time Saved</Text>
+              </View>
+              
+              <View style={[styles.impactItem, { backgroundColor: `${colors.primary}15` }]}>
+                <Text style={styles.impactIcon}>📊</Text>
+                <Text style={[styles.impactValue, { color: colors.primary }]}>{environmentalStats.efficiencyScore}</Text>
+                <Text style={[styles.impactLabel, { color: colors.textSecondary }]}>Efficiency</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* AI Insights Section */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>💡 AI Insights</Text>
+          <View style={[styles.insightsCard, { backgroundColor: colors.card }]}>
+            {aiInsights.map((insight, index) => (
+              <View 
+                key={index} 
+                style={[
+                  styles.insightItem, 
+                  { borderLeftColor: insight.color, backgroundColor: `${insight.color}10` }
+                ]}
+              >
+                <Text style={styles.insightIcon}>{insight.icon}</Text>
+                <Text style={[styles.insightMessage, { color: colors.text }]}>{insight.message}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+        
+        {/* Enhanced AI Voice Assistant */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>🤖 AI Voice Assistant</Text>
           <View style={styles.voiceSection}>
@@ -464,6 +738,154 @@ export default function NavigateScreen() {
 
 const createStyles = (colors: any, insets: any) => StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  // Mood Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  moodModal: {
+    width: '90%',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+  },
+  moodTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  moodSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  moodGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 20,
+  },
+  moodOption: {
+    width: '48%',
+    alignItems: 'center',
+    padding: 16,
+    marginBottom: 10,
+    borderRadius: 12,
+  },
+  selectedMood: {
+    transform: [{ scale: 1.05 }],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  moodEmoji: {
+    fontSize: 30,
+    marginBottom: 8,
+  },
+  moodText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  moodButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    marginTop: 10,
+  },
+  moodButtonIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  moodButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  closeMoodButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+  },
+  closeMoodButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  // Environmental Impact Styles
+  environmentalCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  environmentalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  environmentalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  impactGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  impactItem: {
+    width: '48%',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  impactIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  impactValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginVertical: 4,
+  },
+  impactLabel: {
+    fontSize: 12,
+  },
+  // AI Insights Styles
+  insightsCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  insightsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  insightItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+  },
+  insightIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  insightMessage: {
+    fontSize: 14,
     flex: 1,
   },
   header: {
